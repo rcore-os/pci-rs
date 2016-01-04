@@ -1,0 +1,6 @@
+before_script:
+  - git submodule update --init --recursive
+build:
+  script: "cargo build"
+  tags:
+    - rust
