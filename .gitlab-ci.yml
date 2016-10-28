@@ -1,9 +1,6 @@
 build:
+  image: registry.gitlab.com/robigalia/runner:latest
   script: "cargo build"
-  before_script:
-    - git submodule update --init --recursive
-  tags:
-    - rust
 verify_signatures:
     image: ubuntu:16.10
     script:
