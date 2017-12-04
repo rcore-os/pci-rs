@@ -136,11 +136,11 @@ impl Location {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Identifier {
-    vendor_id: u16,
-    device_id: u16,
-    revision_id: u8,
-    class: u8,
-    subclass: u8,
+    pub vendor_id: u16,
+    pub device_id: u16,
+    pub revision_id: u8,
+    pub class: u8,
+    pub subclass: u8,
 }
 
 /// A device on the PCI bus.
