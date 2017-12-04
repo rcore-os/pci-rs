@@ -173,28 +173,34 @@ pub enum Type {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum BAR {
     Memory(u64, u32, Prefetchable, Type),
-    IO(u32),
+    IO(u32, u32),
 }
 
 impl BAR {
     pub unsafe fn decode<T: PortOps>(ops: &T, loc: Location, am: CSpaceAccessMethod, idx: u16) -> (Option<BAR>, usize) {
         let raw = am.read32(ops, loc, 16 + (idx << 2));
+        if raw == 0 {
+            return (None, idx as usize + 1);
+        }
         if raw & 1 == 0 {
             let mut bits64 = false;
             let base: u64 =
             match (raw & 0b110) >> 1 {
-                0 => { bits64 = true; ((raw & !0xF) as u64) | ((am.read32(ops, loc, 16 + ((idx + 1) << 2)) as u64) << 32) }
-                2 => (raw & !0xF) as u64,
+                0 => (raw & !0xF) as u64,
+                2 => { bits64 = true; ((raw & !0xF) as u64) | ((am.read32(ops, loc, 16 + ((idx + 1) << 2)) as u64) << 32) }
                 _ => { debug_assert!(false, "bad type in memory BAR"); return (None, idx as usize + 1) },
             };
             am.write32(ops, loc, 16 + (idx << 2), !0);
-            let len = !am.read32(ops, loc, 16 + (idx << 12)) + 1;
+            let len = !(am.read32(ops, loc, 16 + (idx << 2)) & !0xF) + 1;
             am.write32(ops, loc, 16 + (idx << 2), raw);
             (Some(BAR::Memory(base, len, if raw & 0b1000 == 0 { Prefetchable::No } else { Prefetchable::Yes },
                         if bits64 { Type::Bits64 } else { Type::Bits32 })),
              if bits64 { idx + 2 } else { idx + 1 } as usize)
         } else {
-            (Some(BAR::IO(raw & !0x3)), idx as usize + 1)
+            am.write32(ops, loc, 16 + (idx << 2), !0);
+            let len = !(am.read32(ops, loc, 16 + (idx << 2)) & !0x3) + 1;
+            am.write32(ops, loc, 16 + (idx << 2), raw);
+            (Some(BAR::IO(raw & !0x3, len)), idx as usize + 1)
         }
     }
 }
