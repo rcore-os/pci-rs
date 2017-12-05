@@ -151,6 +151,7 @@ pub struct PCIDevice {
     pub loc: Location,
     pub id: Identifier,
     pub bars: [Option<BAR>; 6],
+    pub multifunction: bool,
     pub cspace_access_method: CSpaceAccessMethod,
 }
 
@@ -284,7 +285,9 @@ pub unsafe fn probe_function<T: PortOps>(ops: &T, loc: Location, am: CSpaceAcces
         class: class,
         subclass: subclass,
     };
-    let hdrty = am.read8(ops, loc, 14);
+    let hdrty_mf = am.read8(ops, loc, 14);
+    let hdrty = hdrty_mf & !(1 << 7);
+    let mf = hdrty_mf & (1 << 7);
     let mut bars = [None, None, None, None, None, None];
     let max = match hdrty {
         0 => 6,
@@ -301,6 +304,7 @@ pub unsafe fn probe_function<T: PortOps>(ops: &T, loc: Location, am: CSpaceAcces
         loc: loc,
         id: id,
         bars: bars,
+        multifunction: mf == 1,
         cspace_access_method: am,
     })
 }
