@@ -28,6 +28,9 @@
 //!
 //! This crate only supports x86, currently.
 
+#[macro_use]
+extern crate bitflags;
+
 /// A trait defining port I/O operations.
 ///
 /// All port I/O operations are parametric over this trait. This allows operating systems to use
@@ -139,8 +142,72 @@ pub struct Identifier {
     pub vendor_id: u16,
     pub device_id: u16,
     pub revision_id: u8,
+    pub prog_if: u8,
     pub class: u8,
     pub subclass: u8,
+}
+
+bitflags! {
+    pub struct Command: u16 {
+        const IO_SPACE                  = 0x0001;
+        const MEMORY_SPACE              = 0x0002;
+        const BUS_MASTER                = 0x0004;
+        const SPECIAL_CYCLES            = 0x0008;
+        const MWI_ENABLE                = 0x0010;
+        const VGA_PALETTE_SNOOP         = 0x0020;
+        const PARITY_ERROR_RESPONSE     = 0x0040;
+        const STEPPING_CONTROL          = 0x0080;
+        const SERR_ENABLE               = 0x0100;
+        const FAST_BACK_TO_BACK_ENABLE  = 0x0200;
+        const INTERRUPT_DISABLE         = 0x0400;
+        const RESERVED_11               = 0x0800;
+        const RESERVED_12               = 0x1000;
+        const RESERVED_13               = 0x2000;
+        const RESERVED_14               = 0x4000;
+        const RESERVED_15               = 0x8000;
+    }
+}
+
+bitflags! {
+    pub struct Status: u16 {
+        const RESERVED_0                = 0x0001;
+        const RESERVED_1                = 0x0002;
+        const RESERVED_2                = 0x0004;
+        const INTERRUPT_STATUS          = 0x0008;
+        const CAPABILITIES_LIST         = 0x0010;
+        const MHZ66_CAPABLE             = 0x0020;
+        const RESERVED_6                = 0x0040;
+        const FAST_BACK_TO_BACK_CAPABLE = 0x0080;
+        const MASTER_DATA_PARITY_ERROR  = 0x0100;
+        const DEVSEL_MEDIUM_TIMING      = 0x0200;
+        const DEVSEL_SLOW_TIMING        = 0x0400;
+        const SIGNALED_TARGET_ABORT     = 0x0800;
+        const RECEIVED_TARGET_ABORT     = 0x1000;
+        const RECEIVED_MASTER_ABORT     = 0x2000;
+        const SIGNALED_SYSTEM_ERROR     = 0x4000;
+        const DETECTED_PARITY_ERROR     = 0x8000;
+    }
+}
+
+bitflags! {
+    pub struct BridgeControl: u16 {
+        const PARITY_ERROR_RESPONSE_ENABLE = 0x0001;
+        const SERR_ENABLE               = 0x0002;
+        const ISA_ENABLE                = 0x0004;
+        const VGA_ENABLE                = 0x0008;
+        const RESERVED_4                = 0x0010;
+        const MASTER_ABORT_MODE         = 0x0020;
+        const SECONDARY_BUS_RESET       = 0x0040;
+        const FAST_BACK_TO_BACK_ENABLE  = 0x0080;
+        const PRIMARY_DISCARD_TIMER     = 0x0100;
+        const SECONDARY_DISCARD_TIMER   = 0x0200;
+        const DISCARD_TIMER_STATUS      = 0x0400;
+        const DISCARD_TIMER_SERR_ENABLED = 0x0800;
+        const RESERVED_12               = 0x1000;
+        const RESERVED_13               = 0x2000;
+        const RESERVED_14               = 0x4000;
+        const RESERVED_15               = 0x8000;
+    }
 }
 
 /// A device on the PCI bus.
@@ -150,8 +217,16 @@ pub struct Identifier {
 pub struct PCIDevice {
     pub loc: Location,
     pub id: Identifier,
-    pub bars: [Option<BAR>; 6],
+    pub command: Command,
+    pub status: Status,
+    pub cache_line_size: u8,
+    pub latency_timer: u8,
     pub multifunction: bool,
+    pub bist_capable: bool,
+    pub bars: [Option<BAR>; 6],
+    pub kind: DeviceKind,
+    pub pic_interrupt_line: u8,
+    pub interrupt_pin: Option<InterruptPin>,
     pub cspace_access_method: CSpaceAccessMethod,
 }
 
@@ -169,6 +244,71 @@ pub enum Prefetchable {
 pub enum Type {
     Bits32,
     Bits64
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum DeviceKind {
+    Device(DeviceDetails),
+    PciBridge(PciBridgeDetails),
+    CardbusBridge(CardbusBridgeDetails),
+    Unknown,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct DeviceDetails {
+    pub cardbus_cis_ptr: u32,
+    pub subsystem_vendor_id: u16,
+    pub subsystem_id: u16,
+    pub expansion_rom_base_addr: u32,
+    pub min_grant: u8,
+    pub max_latency: u8,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct PciBridgeDetails {
+    pub primary_bus: u8,
+    pub secondary_bus: u8,
+    pub subordinate_bus: u8,
+    pub secondary_latency_timer: u8,
+    pub io_base: u32,
+    pub io_limit: u32,
+    pub secondary_status: Status,
+    pub mem_base: u32,
+    pub mem_limit: u32,
+    pub prefetchable_mem_base: u64,
+    pub prefetchable_mem_limit: u64,
+    pub expansion_rom_base_addr: u32,
+    pub bridge_control: BridgeControl,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct CardbusBridgeDetails {
+    pub socket_base_addr: u32,
+    pub secondary_status: Status,
+    pub pci_bus: u8,
+    pub cardbus_bus: u8,
+    pub subordinate_bus: u8,
+    pub cardbus_latency_timer: u8,
+    pub mem_base_0: u32,
+    pub mem_limit_0: u32,
+    pub mem_base_1: u32,
+    pub mem_limit_1: u32,
+    pub io_base_0: u32,
+    pub io_limit_0: u32,
+    pub io_base_1: u32,
+    pub io_limit_1: u32,
+    pub subsystem_device_id: u16,
+    pub subsystem_vendor_id: u16,
+    pub legacy_mode_base_addr: u32,
+    pub bridge_control: BridgeControl,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum InterruptPin {
+    INTA = 1,
+    INTB,
+    INTC,
+    INTD,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -274,36 +414,130 @@ pub unsafe fn probe_function<T: PortOps>(ops: &T, loc: Location, am: CSpaceAcces
         return None;
     }
     let did = am.read16(ops, loc, 2);
+    let command = Command::from_bits_truncate(am.read16(ops, loc, 4));
+    let status = Status::from_bits_truncate(am.read16(ops, loc, 6));
     let rid = am.read8(ops, loc, 8);
+    let prog_if = am.read8(ops, loc, 9);
     let subclass = am.read8(ops, loc, 10);
     let class = am.read8(ops, loc, 11);
     let id = Identifier {
         vendor_id: vid,
         device_id: did,
         revision_id: rid,
+        prog_if: prog_if,
         class: class,
         subclass: subclass,
     };
+    let cache_line_size = am.read8(ops, loc, 12);
+    let latency_timer = am.read8(ops, loc, 13);
+    let bist_capable = am.read8(ops, loc, 15) & (1 << 7) != 0;
     let hdrty_mf = am.read8(ops, loc, 14);
     let hdrty = hdrty_mf & !(1 << 7);
-    let mf = hdrty_mf & (1 << 7);
-    let mut bars = [None, None, None, None, None, None];
-    let max = match hdrty {
-        0 => 6,
-        1 => 2,
-        _ => 0,
+    let mf = hdrty_mf & (1 << 7) != 0;
+    let pic_interrupt_line = am.read8(ops, loc, 0x3C);
+    let interrupt_pin = match am.read8(ops, loc, 0x3D) {
+        1 => Some(InterruptPin::INTA),
+        2 => Some(InterruptPin::INTB),
+        3 => Some(InterruptPin::INTC),
+        4 => Some(InterruptPin::INTD),
+        _ => None,
     };
+    let kind;
+    let max;
+
+    match hdrty {
+        0 => {
+            max = 6;
+            kind = DeviceKind::Device(DeviceDetails {
+                cardbus_cis_ptr: am.read32(ops, loc, 0x28),
+                subsystem_vendor_id: am.read16(ops, loc, 0x2C),
+                subsystem_id: am.read16(ops, loc, 0x2E),
+                expansion_rom_base_addr: am.read32(ops, loc, 0x30),
+                min_grant: am.read8(ops, loc, 0x3E),
+                max_latency: am.read8(ops, loc, 0x3F),
+            });
+        },
+        1 => {
+            max = 2;
+            kind = DeviceKind::PciBridge(PciBridgeDetails {
+                primary_bus: am.read8(ops, loc, 0x18),
+                secondary_bus: am.read8(ops, loc, 0x19),
+                subordinate_bus: am.read8(ops, loc, 0x1a),
+                secondary_latency_timer: am.read8(ops, loc, 0x1b),
+                secondary_status: Status::from_bits_truncate(am.read16(ops, loc, 0x1e)),
+                io_base:
+                    (am.read8(ops, loc, 0x1c) as u32 & 0xF0) << 8
+                    | (am.read16(ops, loc, 0x30) as u32) << 16,
+                io_limit:
+                    0xFFF
+                    | (am.read8(ops, loc, 0x1d) as u32 & 0xF0) << 8
+                    | (am.read16(ops, loc, 0x32) as u32) << 16,
+                mem_base: (am.read16(ops, loc, 0x20) as u32 & 0xFFF0) << 16,
+                mem_limit:
+                    0xFFFFF
+                    | (am.read16(ops, loc, 0x22) as u32 & 0xFFF0) << 16,
+                prefetchable_mem_base:
+                    (am.read16(ops, loc, 0x24) as u64 & 0xFFF0) << 16
+                    | am.read32(ops, loc, 0x28) as u64,
+                prefetchable_mem_limit:
+                    0xFFFFF
+                    | (am.read16(ops, loc, 0x26) as u64 & 0xFFF0) << 16
+                    | am.read32(ops, loc, 0x2c) as u64,
+                expansion_rom_base_addr: am.read32(ops, loc, 0x38),
+                bridge_control: BridgeControl::from_bits_truncate(am.read16(ops, loc, 0x3e)),
+            });
+        },
+        2 => {
+            max = 0;
+            kind = DeviceKind::CardbusBridge(CardbusBridgeDetails {
+                socket_base_addr: am.read32(ops, loc, 0x10),
+                secondary_status: Status::from_bits_truncate(am.read16(ops, loc, 0x16)),
+                pci_bus: am.read8(ops, loc, 0x18),
+                cardbus_bus: am.read8(ops, loc, 0x19),
+                subordinate_bus: am.read8(ops, loc, 0x1a),
+                cardbus_latency_timer: am.read8(ops, loc, 0x1b),
+                mem_base_0: am.read32(ops, loc, 0x1c),
+                mem_limit_0: am.read32(ops, loc, 0x20),
+                mem_base_1: am.read32(ops, loc, 0x24),
+                mem_limit_1: am.read32(ops, loc, 0x28),
+                io_base_0: am.read32(ops, loc, 0x2c),
+                io_limit_0: am.read32(ops, loc, 0x30),
+                io_base_1: am.read32(ops, loc, 0x34),
+                io_limit_1: am.read32(ops, loc, 0x38),
+                bridge_control: BridgeControl::from_bits_truncate(am.read16(ops, loc, 0x3e)),
+                subsystem_device_id: am.read16(ops, loc, 0x40),
+                subsystem_vendor_id: am.read16(ops, loc, 0x42),
+                legacy_mode_base_addr: am.read32(ops, loc, 0x44),
+            });
+        },
+        _ => {
+            max = 0;
+            kind = DeviceKind::Unknown;
+            debug_assert!(false, "pci: unknown device header type {} for {:?} {:?}", hdrty, loc, id);
+        }
+    };
+
+    let mut bars = [None, None, None, None, None, None];
     let mut i = 0;
     while i < max {
         let (bar, next) = BAR::decode(ops, loc, am, i as u16);
         bars[i] = bar;
         i = next;
     }
+
     Some(PCIDevice {
         loc: loc,
         id: id,
+        command: command,
+        status: status,
+        cache_line_size: cache_line_size,
+        latency_timer: latency_timer,
+        multifunction: mf,
+        bist_capable: bist_capable,
         bars: bars,
-        multifunction: mf == 1,
+        kind: kind,
+        pic_interrupt_line: pic_interrupt_line,
+        interrupt_pin: interrupt_pin,
         cspace_access_method: am,
     })
 }
