@@ -8,7 +8,6 @@
  * according to those terms.
  */
 
-#![feature(no_std)]
 #![no_std]
 
 //! PCI bus management
@@ -28,8 +27,7 @@
 //!
 //! This crate only supports x86, currently.
 
-#[macro_use]
-extern crate bitflags;
+use bitflags::bitflags;
 
 /// A trait defining port I/O operations.
 ///
@@ -77,16 +75,21 @@ impl CSpaceAccessMethod {
 
     /// Returns a value in native endian.
     pub unsafe fn read32<T: PortOps>(self, ops: &T, loc: Location, offset: u16) -> u32 {
-        debug_assert!((offset & 0b11) == 0, "misaligned PCI configuration dword u32 read");
+        debug_assert!(
+            (offset & 0b11) == 0,
+            "misaligned PCI configuration dword u32 read"
+        );
         match self {
             CSpaceAccessMethod::IO => {
-                ops.write32(CONFIG_ADDRESS, loc.encode() | ((offset as u32) & 0b11111100));
+                ops.write32(
+                    CONFIG_ADDRESS,
+                    loc.encode() | ((offset as u32) & 0b11111100),
+                );
                 ops.read32(CONFIG_DATA).to_le()
-            },
-            //MemoryMapped(ptr) => {
-            //    // FIXME: Clarify whether the rules for GEP/GEPi forbid using regular .offset() here.
-            //    ::core::intrinsics::volatile_load(::core::intrinsics::arith_offset(ptr, offset as usize))
-            //}
+            } //MemoryMapped(ptr) => {
+              //    // FIXME: Clarify whether the rules for GEP/GEPi forbid using regular .offset() here.
+              //    ::core::intrinsics::volatile_load(::core::intrinsics::arith_offset(ptr, offset as usize))
+              //}
         }
     }
 
@@ -94,7 +97,12 @@ impl CSpaceAccessMethod {
         let old = self.read32(ops, loc, offset);
         let dest = offset as usize & 0b11 << 3;
         let mask = (0xFF << dest) as u32;
-        self.write32(ops, loc, offset, ((val as u32) << dest | (old & !mask)).to_le());
+        self.write32(
+            ops,
+            loc,
+            offset,
+            ((val as u32) << dest | (old & !mask)).to_le(),
+        );
     }
 
     /// Converts val to little endian before writing.
@@ -102,22 +110,29 @@ impl CSpaceAccessMethod {
         let old = self.read32(ops, loc, offset);
         let dest = offset as usize & 0b10 << 3;
         let mask = (0xFFFF << dest) as u32;
-        self.write32(ops, loc, offset, ((val as u32) << dest | (old & !mask)).to_le());
+        self.write32(
+            ops,
+            loc,
+            offset,
+            ((val as u32) << dest | (old & !mask)).to_le(),
+        );
     }
 
     /// Takes a value in native endian, converts it to little-endian, and writes it to the PCI
     /// device configuration space at register `offset`.
     pub unsafe fn write32<T: PortOps>(self, ops: &T, loc: Location, offset: u16, val: u32) {
-        debug_assert!((offset & 0b11) == 0, "misaligned PCI configuration dword u32 read");
+        debug_assert!(
+            (offset & 0b11) == 0,
+            "misaligned PCI configuration dword u32 read"
+        );
         match self {
             CSpaceAccessMethod::IO => {
                 ops.write32(CONFIG_ADDRESS, loc.encode() | (offset as u32 & 0b11111100));
                 ops.write32(CONFIG_DATA, val.to_le())
-            },
-            //MemoryMapped(ptr) => {
-            //    // FIXME: Clarify whether the rules for GEP/GEPi forbid using regular .offset() here.
-            //    ::core::intrinsics::volatile_load(::core::intrinsics::arith_offset(ptr, offset as usize))
-            //}
+            } //MemoryMapped(ptr) => {
+              //    // FIXME: Clarify whether the rules for GEP/GEPi forbid using regular .offset() here.
+              //    ::core::intrinsics::volatile_load(::core::intrinsics::arith_offset(ptr, offset as usize))
+              //}
         }
     }
 }
@@ -133,7 +148,10 @@ pub struct Location {
 impl Location {
     #[inline(always)]
     fn encode(self) -> u32 {
-        (1 << 31) | ((self.bus as u32) << 16) | (((self.device as u32) & 0b11111) << 11) | (((self.function as u32) & 0b111) << 8)
+        (1 << 31)
+            | ((self.bus as u32) << 16)
+            | (((self.device as u32) & 0b11111) << 11)
+            | (((self.function as u32) & 0b111) << 8)
     }
 }
 
@@ -230,20 +248,18 @@ pub struct PCIDevice {
     pub cspace_access_method: CSpaceAccessMethod,
 }
 
-pub enum PCIScanError {
-
-}
+pub enum PCIScanError {}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Prefetchable {
     Yes,
-    No
+    No,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Type {
     Bits32,
-    Bits64
+    Bits64,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -318,7 +334,12 @@ pub enum BAR {
 }
 
 impl BAR {
-    pub unsafe fn decode<T: PortOps>(ops: &T, loc: Location, am: CSpaceAccessMethod, idx: u16) -> (Option<BAR>, usize) {
+    pub unsafe fn decode<T: PortOps>(
+        ops: &T,
+        loc: Location,
+        am: CSpaceAccessMethod,
+        idx: u16,
+    ) -> (Option<BAR>, usize) {
         let raw = am.read32(ops, loc, 16 + (idx << 2));
         am.write32(ops, loc, 16 + (idx << 2), !0);
         let len_encoded = am.read32(ops, loc, 16 + (idx << 2));
@@ -328,16 +349,32 @@ impl BAR {
         }
         if raw & 1 == 0 {
             let mut bits64 = false;
-            let base: u64 =
-            match (raw & 0b110) >> 1 {
+            let base: u64 = match (raw & 0b110) >> 1 {
                 0 => (raw & !0xF) as u64,
-                2 => { bits64 = true; ((raw & !0xF) as u64) | ((am.read32(ops, loc, 16 + ((idx + 1) << 2)) as u64) << 32) }
-                _ => { debug_assert!(false, "bad type in memory BAR"); return (None, idx as usize + 1) },
+                2 => {
+                    bits64 = true;
+                    ((raw & !0xF) as u64)
+                        | ((am.read32(ops, loc, 16 + ((idx + 1) << 2)) as u64) << 32)
+                }
+                _ => {
+                    debug_assert!(false, "bad type in memory BAR");
+                    return (None, idx as usize + 1);
+                }
             };
             let len = !(len_encoded & !0xF) + 1;
-            (Some(BAR::Memory(base, len, if raw & 0b1000 == 0 { Prefetchable::No } else { Prefetchable::Yes },
-                        if bits64 { Type::Bits64 } else { Type::Bits32 })),
-             if bits64 { idx + 2 } else { idx + 1 } as usize)
+            (
+                Some(BAR::Memory(
+                    base,
+                    len,
+                    if raw & 0b1000 == 0 {
+                        Prefetchable::No
+                    } else {
+                        Prefetchable::Yes
+                    },
+                    if bits64 { Type::Bits64 } else { Type::Bits32 },
+                )),
+                if bits64 { idx + 2 } else { idx + 1 } as usize,
+            )
         } else {
             let len = !(len_encoded & !0x3) + 1;
             (Some(BAR::IO(raw & !0x3, len)), idx as usize + 1)
@@ -345,7 +382,7 @@ impl BAR {
     }
 }
 
-pub struct BusScan<'a, T: PortOps+'a> {
+pub struct BusScan<'a, T: PortOps + 'a> {
     loc: Location,
     ops: &'a T,
     am: CSpaceAccessMethod,
@@ -365,7 +402,7 @@ impl<'a, T: PortOps> BusScan<'a, T> {
         // wraps.
         if self.loc.function < 7 {
             self.loc.function += 1;
-            return
+            return;
         } else {
             self.loc.function = 0;
             if self.loc.device < 31 {
@@ -407,7 +444,11 @@ impl<'a, T: PortOps> ::core::iter::Iterator for BusScan<'a, T> {
     }
 }
 
-pub unsafe fn probe_function<T: PortOps>(ops: &T, loc: Location, am: CSpaceAccessMethod) -> Option<PCIDevice> {
+pub unsafe fn probe_function<T: PortOps>(
+    ops: &T,
+    loc: Location,
+    am: CSpaceAccessMethod,
+) -> Option<PCIDevice> {
     // FIXME: it'd be more efficient to use read32 and decode separately.
     let vid = am.read16(ops, loc, 0);
     if vid == 0xFFFF {
@@ -456,7 +497,7 @@ pub unsafe fn probe_function<T: PortOps>(ops: &T, loc: Location, am: CSpaceAcces
                 min_grant: am.read8(ops, loc, 0x3E),
                 max_latency: am.read8(ops, loc, 0x3F),
             });
-        },
+        }
         1 => {
             max = 2;
             kind = DeviceKind::PciBridge(PciBridgeDetails {
@@ -465,28 +506,22 @@ pub unsafe fn probe_function<T: PortOps>(ops: &T, loc: Location, am: CSpaceAcces
                 subordinate_bus: am.read8(ops, loc, 0x1a),
                 secondary_latency_timer: am.read8(ops, loc, 0x1b),
                 secondary_status: Status::from_bits_truncate(am.read16(ops, loc, 0x1e)),
-                io_base:
-                    (am.read8(ops, loc, 0x1c) as u32 & 0xF0) << 8
+                io_base: (am.read8(ops, loc, 0x1c) as u32 & 0xF0) << 8
                     | (am.read16(ops, loc, 0x30) as u32) << 16,
-                io_limit:
-                    0xFFF
+                io_limit: 0xFFF
                     | (am.read8(ops, loc, 0x1d) as u32 & 0xF0) << 8
                     | (am.read16(ops, loc, 0x32) as u32) << 16,
                 mem_base: (am.read16(ops, loc, 0x20) as u32 & 0xFFF0) << 16,
-                mem_limit:
-                    0xFFFFF
-                    | (am.read16(ops, loc, 0x22) as u32 & 0xFFF0) << 16,
-                prefetchable_mem_base:
-                    (am.read16(ops, loc, 0x24) as u64 & 0xFFF0) << 16
+                mem_limit: 0xFFFFF | (am.read16(ops, loc, 0x22) as u32 & 0xFFF0) << 16,
+                prefetchable_mem_base: (am.read16(ops, loc, 0x24) as u64 & 0xFFF0) << 16
                     | am.read32(ops, loc, 0x28) as u64,
-                prefetchable_mem_limit:
-                    0xFFFFF
+                prefetchable_mem_limit: 0xFFFFF
                     | (am.read16(ops, loc, 0x26) as u64 & 0xFFF0) << 16
                     | am.read32(ops, loc, 0x2c) as u64,
                 expansion_rom_base_addr: am.read32(ops, loc, 0x38),
                 bridge_control: BridgeControl::from_bits_truncate(am.read16(ops, loc, 0x3e)),
             });
-        },
+        }
         2 => {
             max = 0;
             kind = DeviceKind::CardbusBridge(CardbusBridgeDetails {
@@ -509,11 +544,15 @@ pub unsafe fn probe_function<T: PortOps>(ops: &T, loc: Location, am: CSpaceAcces
                 subsystem_vendor_id: am.read16(ops, loc, 0x42),
                 legacy_mode_base_addr: am.read32(ops, loc, 0x44),
             });
-        },
+        }
         _ => {
             max = 0;
             kind = DeviceKind::Unknown;
-            debug_assert!(false, "pci: unknown device header type {} for {:?} {:?}", hdrty, loc, id);
+            debug_assert!(
+                false,
+                "pci: unknown device header type {} for {:?} {:?}",
+                hdrty, loc, id
+            );
         }
     };
 
@@ -543,5 +582,13 @@ pub unsafe fn probe_function<T: PortOps>(ops: &T, loc: Location, am: CSpaceAcces
 }
 
 pub unsafe fn scan_bus<'a, T: PortOps>(ops: &'a T, am: CSpaceAccessMethod) -> BusScan<'a, T> {
-    BusScan { loc: Location { bus: 0, device: 0, function: 0 }, ops: ops, am: am }
+    BusScan {
+        loc: Location {
+            bus: 0,
+            device: 0,
+            function: 0,
+        },
+        ops: ops,
+        am: am,
+    }
 }
