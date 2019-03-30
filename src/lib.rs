@@ -138,7 +138,7 @@ impl CSpaceAccessMethod {
 }
 
 /// Physical location of a device on the bus
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Location {
     pub bus: u8,
     pub device: u8,
