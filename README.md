@@ -1,11 +1,8 @@
 # pci
 
-[![Crates.io](https://img.shields.io/crates/v/pci.svg?style=flat-square)](https://crates.io/crates/pci)
 
-[Documentation](https://doc.robigalia.org/pci)
+A platform-agnostic PCI bus management and configuration access library forked from [robigalia/pci](https://gitlab.com/robigalia/pci).
 
-A platform-agnostic PCI bus management and configuration access library.
+It added these features to the original repo:
 
-## Status
-
-Incomplete.
+1. PCI capabilities listing

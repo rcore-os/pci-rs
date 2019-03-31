@@ -7,7 +7,7 @@
  * notice may not be copied, modified, or distributed except
  * according to those terms.
  */
-
+#![feature(alloc)]
 #![no_std]
 
 //! PCI bus management
@@ -27,6 +27,9 @@
 //!
 //! This crate only supports x86, currently.
 
+extern crate alloc;
+
+use alloc::vec::Vec;
 use bitflags::bitflags;
 
 /// A trait defining port I/O operations.
@@ -231,7 +234,7 @@ bitflags! {
 /// A device on the PCI bus.
 ///
 /// Although accessing configuration space may be expensive, it is not cached.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PCIDevice {
     pub loc: Location,
     pub id: Identifier,
@@ -246,6 +249,7 @@ pub struct PCIDevice {
     pub pic_interrupt_line: u8,
     pub interrupt_pin: Option<InterruptPin>,
     pub cspace_access_method: CSpaceAccessMethod,
+    pub capabilities: Option<Vec<Capability>>,
 }
 
 pub enum PCIScanError {}
@@ -325,6 +329,51 @@ pub enum InterruptPin {
     INTB,
     INTC,
     INTD,
+}
+
+bitflags! {
+    pub struct CapabilityMSIMessageControl: u16 {
+        const ADDR64_CAPABLE = 1 << 7;
+        const MULTIPLE_MESSAGE_ENABLE_2 = 1 << 4;
+        const MULTIPLE_MESSAGE_ENABLE_4 = 2 << 4;
+        const MULTIPLE_MESSAGE_ENABLE_8 = 3 << 4;
+        const MULTIPLE_MESSAGE_ENABLE_16 = 4 << 4;
+        const MULTIPLE_MESSAGE_ENABLE_32 = 5 << 4;
+        const MULTIPLE_MESSAGE_CAPABLE_2 = 1 << 1;
+        const MULTIPLE_MESSAGE_CAPABLE_4 = 2 << 1;
+        const MULTIPLE_MESSAGE_CAPABLE_8 = 3 << 1;
+        const MULTIPLE_MESSAGE_CAPABLE_16 = 4 << 1;
+        const MULTIPLE_MESSAGE_CAPABLE_32 = 5 << 1;
+        const ENABLE = 1 << 0;
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct CapabilityMSIData {
+    message_control: CapabilityMSIMessageControl,
+    message_address: u64,
+    message_data: u16,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum CapabilityData {
+    PM, // Power Management
+    AGP, // Accelerated Graphics Part
+    VPD, // Vital Product Data
+    SLOTID, // Slot Identification
+    MSI(CapabilityMSIData), // Message Signalled Interrupts
+    CHSWP, // CompactPCI HotSwap
+    PCIX, // PCI-X
+    EXP, // PCI Express
+    MSIX, // MSI-X
+    SATA, // SATA Data/Index Conf.
+    Unknown(u8),
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct Capability {
+    cap_ptr: u16,
+    data: CapabilityData,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -556,6 +605,55 @@ pub unsafe fn probe_function<T: PortOps>(
         }
     };
 
+    let mut capabilities = None;
+    if status.contains(Status::CAPABILITIES_LIST) {
+        let mut caps = Vec::new();
+        // traverse capabilities list
+        let mut cap_pointer = am.read8(ops, loc, 0x34) as u16;
+        while cap_pointer > 0 {
+            let cap_id = am.read8(ops, loc, cap_pointer);
+            let data = match cap_id {
+                0x01 => CapabilityData::PM,
+                0x02 => CapabilityData::AGP,
+                0x03 => CapabilityData::VPD,
+                0x04 => CapabilityData::SLOTID,
+                0x05 => {
+                    let message_control = CapabilityMSIMessageControl::from_bits_truncate(
+                        am.read16(ops, loc, cap_pointer + 0x02),
+                    );
+                    let (addr, data) =
+                        if message_control.contains(CapabilityMSIMessageControl::ADDR64_CAPABLE) {
+                            // 64bit
+                            let lo = am.read32(ops, loc, cap_pointer + 0x04) as u64;
+                            let hi = am.read32(ops, loc, cap_pointer + 0x08) as u64;
+                            let data = am.read16(ops, loc, cap_pointer + 0x0C);
+                            ((hi << 32) | lo, data)
+                        } else {
+                            // 32bit
+                            let addr = am.read32(ops, loc, cap_pointer + 0x04) as u64;
+                            let data = am.read16(ops, loc, cap_pointer + 0x0C);
+                            (addr, data)
+                        };
+                    CapabilityData::MSI(CapabilityMSIData {
+                        message_control: message_control,
+                        message_address: addr,
+                        message_data: data,
+                    })
+                }
+                0x10 => CapabilityData::EXP,
+                0x11 => CapabilityData::MSIX,
+                0x12 => CapabilityData::SATA,
+                _ => CapabilityData::Unknown(cap_id),
+            };
+            caps.push(Capability {
+                cap_ptr: cap_pointer,
+                data: data,
+            });
+            cap_pointer = am.read8(ops, loc, cap_pointer + 1) as u16;
+        }
+        capabilities = Some(caps);
+    }
+
     let mut bars = [None, None, None, None, None, None];
     let mut i = 0;
     while i < max {
@@ -578,6 +676,7 @@ pub unsafe fn probe_function<T: PortOps>(
         pic_interrupt_line: pic_interrupt_line,
         interrupt_pin: interrupt_pin,
         cspace_access_method: am,
+        capabilities: capabilities,
     })
 }
 

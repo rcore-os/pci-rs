@@ -24,4 +24,3 @@ license = "MIT/Apache-2.0"
 bitflags = "1.0.4"
 
 [features]
-unstable = []
