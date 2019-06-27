@@ -356,17 +356,25 @@ pub struct CapabilityMSIData {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct CapabilitySATAData {
+    major_revision: u32,
+    minor_revision: u32,
+    bar_offset: u32,
+    bar_location: u32,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum CapabilityData {
-    PM, // Power Management
-    AGP, // Accelerated Graphics Part
-    VPD, // Vital Product Data
-    SLOTID, // Slot Identification
-    MSI(CapabilityMSIData), // Message Signalled Interrupts
-    CHSWP, // CompactPCI HotSwap
-    PCIX, // PCI-X
-    EXP, // PCI Express
-    MSIX, // MSI-X
-    SATA, // SATA Data/Index Conf.
+    PM,                       // Power Management
+    AGP,                      // Accelerated Graphics Part
+    VPD,                      // Vital Product Data
+    SLOTID,                   // Slot Identification
+    MSI(CapabilityMSIData),   // Message Signalled Interrupts
+    CHSWP,                    // CompactPCI HotSwap
+    PCIX,                     // PCI-X
+    EXP,                      // PCI Express
+    MSIX,                     // MSI-X
+    SATA(CapabilitySATAData), // SATA Data/Index Conf.
     Unknown(u8),
 }
 
@@ -642,7 +650,16 @@ pub unsafe fn probe_function<T: PortOps>(
                 }
                 0x10 => CapabilityData::EXP,
                 0x11 => CapabilityData::MSIX,
-                0x12 => CapabilityData::SATA,
+                0x12 => {
+                    let sata_cr0 = am.read32(ops, loc, cap_pointer);
+                    let sata_cr1 = am.read32(ops, loc, cap_pointer + 0x4);
+                    CapabilityData::SATA(CapabilitySATAData {
+                        major_revision: (sata_cr0 >> 20) & 0xf,
+                        minor_revision: (sata_cr0 >> 16) & 0xf,
+                        bar_offset: (sata_cr1 >> 4) & 0xfffff,
+                        bar_location: sata_cr1 & 0xf,
+                    })
+                }
                 _ => CapabilityData::Unknown(cap_id),
             };
             caps.push(Capability {
