@@ -364,17 +364,45 @@ pub struct CapabilitySATAData {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct CapabilityPMData {
+    pme_support: u32,
+    d2_support: u32,
+    d1_support: u32,
+    aux_current: u32,
+    dsi: u32,
+    pme_clock: u32,
+    version: u32,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct CapabilityEXPData {
+    interrupt_message_number: u16,
+    slot_implemented: u16,
+    device_port_type: u16,
+    cap_version: u16,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum CapabilityData {
-    PM,                       // Power Management
+    PM(CapabilityPMData),     // Power Management
     AGP,                      // Accelerated Graphics Part
     VPD,                      // Vital Product Data
     SLOTID,                   // Slot Identification
     MSI(CapabilityMSIData),   // Message Signalled Interrupts
     CHSWP,                    // CompactPCI HotSwap
     PCIX,                     // PCI-X
-    EXP,                      // PCI Express
+    HP,                       // HyperTransport
+    VNDR,                     // Vendor-Specific
+    DBG,                      // Debug port
+    CCRC,                     // CompactPCI Central Resource Control
+    SHPC,                     // PCI Standard Hot-Plug Controller
+    SSVID,                    // Bridge subsystem vendor/device ID
+    AGP3,                     // AGP Target PCI-PCI bridge
+    SECDEV,                   // Secure Device
+    EXP(CapabilityEXPData),   // PCI Express
     MSIX,                     // MSI-X
     SATA(CapabilitySATAData), // SATA Data/Index Conf.
+    AF,                       // PCI Advanced Features
     Unknown(u8),
 }
 
@@ -621,7 +649,18 @@ pub unsafe fn probe_function<T: PortOps>(
         while cap_pointer > 0 {
             let cap_id = am.read8(ops, loc, cap_pointer);
             let data = match cap_id {
-                0x01 => CapabilityData::PM,
+                0x01 => {
+                    let cap = am.read32(ops, loc, cap_pointer + 0x4);
+                    CapabilityData::PM(CapabilityPMData {
+                        pme_support: cap >> 27,
+                        d2_support: (cap >> 26) & 0x1,
+                        d1_support: (cap >> 25) & 0x1,
+                        aux_current: (cap >> 22) & 0x7,
+                        dsi: (cap >> 21) & 0x1,
+                        pme_clock: (cap >> 19) & 0x1,
+                        version: (cap >> 16) & 0x7,
+                    })
+                }
                 0x02 => CapabilityData::AGP,
                 0x03 => CapabilityData::VPD,
                 0x04 => CapabilityData::SLOTID,
@@ -648,7 +687,15 @@ pub unsafe fn probe_function<T: PortOps>(
                         message_data: data,
                     })
                 }
-                0x10 => CapabilityData::EXP,
+                0x10 => {
+                    let cap = am.read16(ops, loc, cap_pointer + 0x2);
+                    CapabilityData::EXP(CapabilityEXPData {
+                        interrupt_message_number: (cap >> 9) & 0b11111,
+                        slot_implemented: (cap >> 8) & 0x1,
+                        device_port_type: (cap >> 4) & 0xf,
+                        cap_version: cap & 0xf,
+                    })
+                }
                 0x11 => CapabilityData::MSIX,
                 0x12 => {
                     let sata_cr0 = am.read32(ops, loc, cap_pointer);
