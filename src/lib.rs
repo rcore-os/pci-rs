@@ -446,7 +446,7 @@ impl BAR {
                     return (None, idx as usize + 1);
                 }
             };
-            let len = !(len_encoded & !0xF) + 1;
+            let len = !(len_encoded & !0xF).wrapping_add(1);
             (
                 Some(BAR::Memory(
                     base,
