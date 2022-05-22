@@ -7,6 +7,8 @@
  * notice may not be copied, modified, or distributed except
  * according to those terms.
  */
+// 此PCI驱动写得很垃圾 :)
+
 #![feature(alloc)]
 #![no_std]
 
@@ -31,6 +33,7 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 use bitflags::bitflags;
+use log::*;
 
 /// A trait defining port I/O operations.
 ///
@@ -40,13 +43,14 @@ use bitflags::bitflags;
 pub trait PortOps {
     unsafe fn read8(&self, port: u16) -> u8;
     unsafe fn read16(&self, port: u16) -> u16;
-    unsafe fn read32(&self, port: u16) -> u32;
+    unsafe fn read32(&self, port: u32) -> u32;
 
     unsafe fn write8(&self, port: u16, val: u8);
     unsafe fn write16(&self, port: u16, val: u16);
-    unsafe fn write32(&self, port: u16, val: u32);
+    unsafe fn write32(&self, port: u32, val: u32);
 }
 
+// I/O space: 0x0000 ~ 0xFFFF
 const CONFIG_ADDRESS: u16 = 0x0CF8;
 const CONFIG_DATA: u16 = 0x0CFC;
 
@@ -59,7 +63,7 @@ pub enum CSpaceAccessMethod {
     /// Specification 3.0.
     IO,
     // PCIe memory-mapped configuration space access
-    //MemoryMapped(*mut u8),
+    MemoryMapped(*mut u8),
 }
 
 // All IO-bus ops are 32-bit, we mask and shift to get the values we want.
@@ -85,14 +89,18 @@ impl CSpaceAccessMethod {
         match self {
             CSpaceAccessMethod::IO => {
                 ops.write32(
-                    CONFIG_ADDRESS,
+                    CONFIG_ADDRESS as u32,
                     loc.encode() | ((offset as u32) & 0b11111100),
                 );
-                ops.read32(CONFIG_DATA).to_le()
-            } //MemoryMapped(ptr) => {
+                ops.read32(CONFIG_DATA as u32).to_le()
+            }
+            CSpaceAccessMethod::MemoryMapped(ptr) => {
               //    // FIXME: Clarify whether the rules for GEP/GEPi forbid using regular .offset() here.
               //    ::core::intrinsics::volatile_load(::core::intrinsics::arith_offset(ptr, offset as usize))
-              //}
+
+                trace!("CSpaceAccessMethod::MemoryMapped: Read {:?} {:?}", loc, offset);
+                ops.read32(((loc.bus as u32) << 20) | ((loc.device as u32) << 15) | ((loc.function as u32) << 12) | ((offset as u32) & 0xffc))
+            }
         }
     }
 
@@ -130,12 +138,16 @@ impl CSpaceAccessMethod {
         );
         match self {
             CSpaceAccessMethod::IO => {
-                ops.write32(CONFIG_ADDRESS, loc.encode() | (offset as u32 & 0b11111100));
-                ops.write32(CONFIG_DATA, val.to_le())
-            } //MemoryMapped(ptr) => {
+                ops.write32(CONFIG_ADDRESS as u32, loc.encode() | (offset as u32 & 0b11111100));
+                ops.write32(CONFIG_DATA as u32, val.to_le())
+            }
+            CSpaceAccessMethod::MemoryMapped(ptr) => {
               //    // FIXME: Clarify whether the rules for GEP/GEPi forbid using regular .offset() here.
               //    ::core::intrinsics::volatile_load(::core::intrinsics::arith_offset(ptr, offset as usize))
-              //}
+
+                trace!("CSpaceAccessMethod::MemoryMapped: Write {:?} {:?} {:?}", loc, offset, val);
+                ops.write32(((loc.bus as u32) << 20) | ((loc.device as u32) << 15) | ((loc.function as u32) << 12) | ((offset as u32) & 0xffc), val)
+            }
         }
     }
 }
@@ -540,6 +552,8 @@ pub unsafe fn probe_function<T: PortOps>(
         return None;
     }
     let did = am.read16(ops, loc, 2);
+    debug!("PCI probe: {:#x?} {:#x} @ {:?}", did, vid, loc);
+
     let command = Command::from_bits_truncate(am.read16(ops, loc, 4));
     let status = Status::from_bits_truncate(am.read16(ops, loc, 6));
     let rid = am.read8(ops, loc, 8);
@@ -722,6 +736,7 @@ pub unsafe fn probe_function<T: PortOps>(
     let mut i = 0;
     while i < max {
         let (bar, next) = BAR::decode(ops, loc, am, i as u16);
+        debug!("BAR[{}]: {:x?}", i, bar);
         bars[i] = bar;
         i = next;
     }
