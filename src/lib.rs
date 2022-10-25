@@ -9,7 +9,6 @@
  */
 // 此PCI驱动写得很垃圾 :)
 
-#![feature(alloc)]
 #![no_std]
 
 //! PCI bus management
@@ -94,7 +93,7 @@ impl CSpaceAccessMethod {
                 );
                 ops.read32(CONFIG_DATA as u32).to_le()
             }
-            CSpaceAccessMethod::MemoryMapped(ptr) => {
+            CSpaceAccessMethod::MemoryMapped(_ptr) => {
                 //    // FIXME: Clarify whether the rules for GEP/GEPi forbid using regular .offset() here.
                 //    ::core::intrinsics::volatile_load(::core::intrinsics::arith_offset(ptr, offset as usize))
 
@@ -153,7 +152,7 @@ impl CSpaceAccessMethod {
                 );
                 ops.write32(CONFIG_DATA as u32, val.to_le())
             }
-            CSpaceAccessMethod::MemoryMapped(ptr) => {
+            CSpaceAccessMethod::MemoryMapped(_ptr) => {
                 //    // FIXME: Clarify whether the rules for GEP/GEPi forbid using regular .offset() here.
                 //    ::core::intrinsics::volatile_load(::core::intrinsics::arith_offset(ptr, offset as usize))
 
