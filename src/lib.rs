@@ -95,11 +95,20 @@ impl CSpaceAccessMethod {
                 ops.read32(CONFIG_DATA as u32).to_le()
             }
             CSpaceAccessMethod::MemoryMapped(ptr) => {
-              //    // FIXME: Clarify whether the rules for GEP/GEPi forbid using regular .offset() here.
-              //    ::core::intrinsics::volatile_load(::core::intrinsics::arith_offset(ptr, offset as usize))
+                //    // FIXME: Clarify whether the rules for GEP/GEPi forbid using regular .offset() here.
+                //    ::core::intrinsics::volatile_load(::core::intrinsics::arith_offset(ptr, offset as usize))
 
-                trace!("CSpaceAccessMethod::MemoryMapped: Read {:?} {:?}", loc, offset);
-                ops.read32(((loc.bus as u32) << 20) | ((loc.device as u32) << 15) | ((loc.function as u32) << 12) | ((offset as u32) & 0xffc))
+                trace!(
+                    "CSpaceAccessMethod::MemoryMapped: Read {:?} {:?}",
+                    loc,
+                    offset
+                );
+                ops.read32(
+                    ((loc.bus as u32) << 16)
+                        | ((loc.device as u32) << 11)
+                        | ((loc.function as u32) << 8)
+                        | ((offset as u32) & 0xfc),
+                )
             }
         }
     }
@@ -138,15 +147,29 @@ impl CSpaceAccessMethod {
         );
         match self {
             CSpaceAccessMethod::IO => {
-                ops.write32(CONFIG_ADDRESS as u32, loc.encode() | (offset as u32 & 0b11111100));
+                ops.write32(
+                    CONFIG_ADDRESS as u32,
+                    loc.encode() | (offset as u32 & 0b11111100),
+                );
                 ops.write32(CONFIG_DATA as u32, val.to_le())
             }
             CSpaceAccessMethod::MemoryMapped(ptr) => {
-              //    // FIXME: Clarify whether the rules for GEP/GEPi forbid using regular .offset() here.
-              //    ::core::intrinsics::volatile_load(::core::intrinsics::arith_offset(ptr, offset as usize))
+                //    // FIXME: Clarify whether the rules for GEP/GEPi forbid using regular .offset() here.
+                //    ::core::intrinsics::volatile_load(::core::intrinsics::arith_offset(ptr, offset as usize))
 
-                trace!("CSpaceAccessMethod::MemoryMapped: Write {:?} {:?} {:?}", loc, offset, val);
-                ops.write32(((loc.bus as u32) << 20) | ((loc.device as u32) << 15) | ((loc.function as u32) << 12) | ((offset as u32) & 0xffc), val)
+                trace!(
+                    "CSpaceAccessMethod::MemoryMapped: Write {:?} {:?} {:?}",
+                    loc,
+                    offset,
+                    val
+                );
+                ops.write32(
+                    ((loc.bus as u32) << 16)
+                        | ((loc.device as u32) << 11)
+                        | ((loc.function as u32) << 8)
+                        | ((offset as u32) & 0xfc),
+                    val,
+                )
             }
         }
     }
@@ -552,6 +575,9 @@ pub unsafe fn probe_function<T: PortOps>(
         return None;
     }
     let did = am.read16(ops, loc, 2);
+    if vid == 0 && did == 0 {
+        return None;
+    }
     debug!("PCI probe: {:#x?} {:#x} @ {:?}", did, vid, loc);
 
     let command = Command::from_bits_truncate(am.read16(ops, loc, 4));
