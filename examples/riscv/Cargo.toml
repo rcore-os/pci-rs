@@ -13,3 +13,6 @@ opensbi-rt = { git = "https://github.com/rcore-os/opensbi-rt.git", rev = "1308cc
 device_tree = { git = "https://github.com/rcore-os/device_tree-rs", rev = "2f2e55fb" }
 pci = { path = "../.." }
 lazy_static = { version = "1.4", features = ["spin_no_std"] }
+
+[features]
+board-fu740 = []

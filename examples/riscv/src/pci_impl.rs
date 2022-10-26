@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 use pci::{PortOps, CSpaceAccessMethod};
 
 pub const PCI_COMMAND: u16 = 0x04;
@@ -47,12 +48,8 @@ pub const PCI_BASE: usize = 0;
 pub const PCI_ACCESS: CSpaceAccessMethod = CSpaceAccessMethod::IO;
 
 } else if #[cfg(target_arch = "riscv64")] {
-use core::ptr::{read_volatile, write_volatile};
 
-/// riscv64 qemu
-pub const PCI_BASE: usize = 0x30000000;
-pub const E1000_BASE: usize = 0x40000000;
-pub const PCI_ACCESS: CSpaceAccessMethod = CSpaceAccessMethod::MemoryMapped(PCI_BASE as *mut u8);
+use core::ptr::{read_volatile, write_volatile};
 
 pub fn phys_to_virt(paddr: usize) -> usize {
     paddr
@@ -74,6 +71,51 @@ pub fn readv<T>(addr: usize) -> T {
     unsafe { read_volatile(cell) }
 }
 
+pub const E1000_BASE: usize = 0x40000000;
+pub const PCI_ACCESS: CSpaceAccessMethod = CSpaceAccessMethod::MemoryMapped(PCI_BASE as *mut u8);
+
+cfg_if::cfg_if! {
+if #[cfg(feature = "board-fu740")] {
+
+use super::error;
+use pci::{pcie_dw_read_config, pcie_dw_write_config, PciSize};
+
+pub const PCI_BASE: usize = 0xe00000000;
+impl PortOps for PortOpsImpl {
+    unsafe fn read8(&self, port: u16) -> u8 {
+        error!("unimplemented read8!");
+        0
+    }
+    unsafe fn read16(&self, port: u16) -> u16 {
+        error!("unimplemented read16!");
+        0
+    }
+    unsafe fn read32(&self, port: u32) -> u32 {
+        let mut valuep: u64 = 0;
+        let bdf = port;
+        let offset = port & 0xfc;
+        pcie_dw_read_config(bdf, offset, &mut valuep, PciSize::Pci32).unwrap();
+
+        valuep as u32
+    }
+
+    unsafe fn write8(&self, port: u16, val: u8) {
+        error!("unimplemented write8!");
+    }
+    unsafe fn write16(&self, port: u16, val: u16) {
+        error!("unimplemented write16!");
+    }
+    unsafe fn write32(&self, port: u32, val: u32) {
+        let bdf = port;
+        let offset = port & 0xfc;
+        pcie_dw_write_config(bdf, offset, val as u64, PciSize::Pci32).unwrap();
+    }
+}
+
+} else {
+
+/// riscv64 qemu
+pub const PCI_BASE: usize = 0x30000000;
 impl PortOps for PortOpsImpl {
     unsafe fn read8(&self, port: u16) -> u8 {
         readv(PCI_BASE + port as usize)
@@ -94,6 +136,7 @@ impl PortOps for PortOpsImpl {
         writev(PCI_BASE + port as usize, val);
     }
 }
+}}
 
 }
 } // cfg_if

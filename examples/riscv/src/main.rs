@@ -1,26 +1,29 @@
 #![no_std]
 #![no_main]
 #![deny(warnings)]
+#![allow(unused_variables)]
 #![allow(dead_code)]
 
-mod pci_impl;
-
 extern crate alloc;
-extern crate log;
 extern crate opensbi_rt;
 extern crate device_tree;
 extern crate pci;
+extern crate log;
 
+mod pci_impl;
+
+pub use log::*;
 use alloc::{format, vec::Vec};
 use device_tree::util::SliceRead;
 use device_tree::{DeviceTree, Node};
 use pci::{PCIDevice, Location, scan_bus, BAR};
 use pci_impl::*;
-use log::*;
 
 #[no_mangle]
 extern "C" fn main(_hartid: usize, device_tree_paddr: usize) {
+    opensbi_rt::println!("\nHi !\nTEST START");
     log::set_max_level(LevelFilter::Debug);
+    info!("log initialized");
     init_dt(device_tree_paddr);
     info!("TEST END");
 }
@@ -44,7 +47,7 @@ fn init_dt(dtb: usize) {
 
 fn walk_dt_node(dt: &Node) {
     if let Ok(compatible) = dt.prop_str("compatible") {
-        if compatible == "pci-host-ecam-generic" {
+        if compatible == "pci-host-ecam-generic" || compatible == "sifive,fu740-pcie" {
             if let Some(reg) = dt.prop_raw("reg") {
                 let paddr = reg.as_slice().read_be_u64(0).unwrap();
                 let size = reg.as_slice().read_be_u64(2 * core::mem::size_of::<u32>()).unwrap();
@@ -59,7 +62,6 @@ fn walk_dt_node(dt: &Node) {
 }
 
 pub fn pci_scan() -> Option<u32> {
-
     let mut dev_list = Vec::new();
     let pci_iter = unsafe { scan_bus(&PortOpsImpl, PCI_ACCESS) };
     info!("--------- PCI bus:device:function ---------");

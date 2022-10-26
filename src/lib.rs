@@ -30,6 +30,9 @@
 
 extern crate alloc;
 
+pub mod pcie_dw_sifive;
+pub use pcie_dw_sifive::*;
+
 use alloc::vec::Vec;
 use bitflags::bitflags;
 use log::*;

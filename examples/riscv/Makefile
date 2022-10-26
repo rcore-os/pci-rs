@@ -1,7 +1,9 @@
 arch ?= riscv64
+board ?= qemu
 target := $(arch)imac-unknown-none-elf
 mode := release
 kernel := target/$(target)/$(mode)/riscv
+bin := target/$(target)/$(mode)/riscv.bin
 img := target/$(target)/$(mode)/nvme.img
 
 sysroot := $(shell rustc --print sysroot)
@@ -12,17 +14,19 @@ BUILD_ARGS += --target $(target)
 ifeq ($(mode), release)
 	BUILD_ARGS += --release
 endif
+ifeq ($(board), fu740)
+	BUILD_ARGS += --features board-fu740
+endif
 
-.PHONY: kernel build clean qemu run env
+.PHONY: kernel build clean qemu run
 
-build: $(bin)
-
-env:
-	rustup component add llvm-tools-preview rustfmt
-	rustup target add $(target)
+build: kernel $(bin)
 
 kernel:
 	cargo build $(BUILD_ARGS)
+
+$(bin): kernel
+	$(objcopy) $(kernel) --strip-all -O binary $(bin)
 
 asm:
 	$(objdump) -d $(kernel) | less
@@ -36,7 +40,7 @@ header:
 clean:
 	cargo clean
 
-qemu: kernel $(img)
+qemu: $(img)
 	qemu-system-$(arch) \
 		-machine virt \
 		-serial mon:stdio \
