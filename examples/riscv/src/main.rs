@@ -49,8 +49,14 @@ fn walk_dt_node(dt: &Node) {
     if let Ok(compatible) = dt.prop_str("compatible") {
         if compatible == "pci-host-ecam-generic" || compatible == "sifive,fu740-pcie" {
             if let Some(reg) = dt.prop_raw("reg") {
-                let paddr = reg.as_slice().read_be_u64(0).unwrap();
-                let size = reg.as_slice().read_be_u64(2 * core::mem::size_of::<u32>()).unwrap();
+                let paddr = reg.as_slice().read_be_u64(0).unwrap_or(0);
+                let size = reg.as_slice().read_be_u64(2 * core::mem::size_of::<u32>()).unwrap_or(0);
+
+                let address_cells = dt.prop_u32("#address-cells").unwrap_or(0) as usize;
+                let size_cells = dt.prop_u32("#size-cells").unwrap_or(0) as usize;
+                let ranges = dt.prop_cells("ranges").unwrap();
+                info!("pci ranges: bus_addr@[{:x?}], cpu_paddr@[{:x?}], size@[{:x?}]", ranges[0]..ranges[address_cells-1], ranges[address_cells]..ranges[address_cells+2-1], ranges[address_cells + 2]..ranges[address_cells +2+size_cells-1]);
+
                 info!("{:?} addr={:#x}, size={:#x}", compatible, paddr, size);
                 pci_scan().unwrap();
             }
